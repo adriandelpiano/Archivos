@@ -1,0 +1,658 @@
+# Primero, crear los directorios necesarios:
+mkdir -p src tests docs logs
+
+# Luego, crear cada archivo:
+
+# 1. Crear src/code_generator.py
+cat > src/code_generator.py << 'EOF'
+import ast
+import logging
+from typing import Optional, Dict, Any
+
+class CodeGenerator:
+    """
+    Clase para generación y validación de código Python.
+    """
+    
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        self.logger = logger or logging.getLogger(__name__)
+
+    def generate_code(self, template: str, params: Dict[str, Any]) -> str:
+        """
+        Genera código Python basado en un template y parámetros.
+        
+        Args:
+            template (str): Template de código con placeholders
+            params (Dict[str, Any]): Parámetros para rellenar el template
+            
+        Returns:
+            str: Código Python generado
+        """
+        try:
+            generated_code = template.format(**params)
+            self.validate_code(generated_code)
+            self.logger.info("Código generado exitosamente")
+            return generated_code
+        except Exception as e:
+            self.logger.error(f"Error al generar código: {str(e)}")
+            raise
+
+    def validate_code(self, code: str) -> bool:
+        """
+        Valida que el código Python sea sintácticamente correcto.
+        
+        Args:
+            code (str): Código Python a validar
+            
+        Returns:
+            bool: True si el código es válido
+        """
+        try:
+            ast.parse(code)
+            return True
+        except SyntaxError as e:
+            self.logger.error(f"Error de sintaxis en el código: {str(e)}")
+            raise
+
+    def format_code(self, code: str) -> str:
+        """
+        Formatea el código Python según PEP 8.
+        
+        Args:
+            code (str): Código Python a formatear
+            
+        Returns:
+            str: Código formateado
+        """
+        try:
+            import black
+            return black.format_str(code, mode=black.FileMode())
+        except Exception as e:
+            self.logger.warning(f"No se pudo formatear el código: {str(e)}")
+            return code
+EOF
+
+# 2. Crear src/error_handler.py
+cat > src/error_handler.py << 'EOF'
+import sys
+import traceback
+import logging
+from typing import Optional, Callable, Any
+
+class ErrorHandler:
+    """
+    Manejador de errores con capacidad de auto-resolución.
+    """
+    
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        self.logger = logger or logging.getLogger(__name__)
+        self.error_solutions = {}
+        self._register_common_solutions()
+
+    def _register_common_solutions(self):
+        """Registra soluciones comunes para errores conocidos."""
+        self.error_solutions.update({
+            'ModuleNotFoundError': self._handle_missing_module,
+            'ImportError': self._handle_import_error,
+            'SyntaxError': self._handle_syntax_error,
+            'IndentationError': self._handle_indentation_error
+        })
+
+    def register_solution(self, error_type: str, solution: Callable):
+        """
+        Registra una nueva solución para un tipo de error.
+        
+        Args:
+            error_type (str): Nombre del tipo de error
+            solution (Callable): Función que implementa la solución
+        """
+        self.error_solutions[error_type] = solution
+        self.logger.info(f"Registrada nueva solución para {error_type}")
+
+    def handle_error(self, error: Exception) -> Optional[Any]:
+        """
+        Maneja un error intentando aplicar una solución automática.
+        
+        Args:
+            error (Exception): Error a manejar
+            
+        Returns:
+            Optional[Any]: Resultado de la solución si existe
+        """
+        error_type = error.__class__.__name__
+        self.logger.error(f"Error detectado: {error_type} - {str(error)}")
+        
+        if error_type in self.error_solutions:
+            try:
+                return self.error_solutions[error_type](error)
+            except Exception as e:
+                self.logger.error(f"Error al aplicar solución: {str(e)}")
+                return None
+        else:
+            self.logger.warning(f"No hay solución registrada para {error_type}")
+            return None
+
+    def _handle_missing_module(self, error: ModuleNotFoundError) -> bool:
+        """
+        Maneja errores de módulos faltantes intentando instalarlos.
+        
+        Args:
+            error (ModuleNotFoundError): Error de módulo faltante
+            
+        Returns:
+            bool: True si se resolvió el error
+        """
+        from .dependency_manager import DependencyManager
+        module_name = str(error).split("'")[1]
+        try:
+            dm = DependencyManager()
+            dm.install_package(module_name)
+            return True
+        except Exception as e:
+            self.logger.error(f"No se pudo instalar {module_name}: {str(e)}")
+            return False
+
+    def _handle_import_error(self, error: ImportError) -> bool:
+        """
+        Maneja errores de importación.
+        
+        Args:
+            error (ImportError): Error de importación
+            
+        Returns:
+            bool: True si se resolvió el error
+        """
+        self.logger.error(f"Error de importación: {str(error)}")
+        return False
+
+    def _handle_syntax_error(self, error: SyntaxError) -> str:
+        """
+        Maneja errores de sintaxis proporcionando información detallada.
+        
+        Args:
+            error (SyntaxError): Error de sintaxis
+            
+        Returns:
+            str: Mensaje con detalles del error
+        """
+        return f"Error de sintaxis en línea {error.lineno}: {error.msg}"
+
+    def _handle_indentation_error(self, error: IndentationError) -> str:
+        """
+        Maneja errores de indentación.
+        
+        Args:
+            error (IndentationError): Error de indentación
+            
+        Returns:
+            str: Mensaje con detalles del error
+        """
+        return f"Error de indentación en línea {error.lineno}"
+EOF
+
+# 3. Crear src/ollama_integration.py
+cat > src/ollama_integration.py << 'EOF'
+import logging
+import requests
+from typing import Optional, Dict, Any
+
+class OllamaIntegration:
+    """
+    Integración con Ollama para generación y análisis de código.
+    """
+    
+    def __init__(self, 
+                 host: str = "http://localhost:11434",
+                 model: str = "codellama",
+                 logger: Optional[logging.Logger] = None):
+        self.host = host
+        self.model = model
+        self.logger = logger or logging.getLogger(__name__)
+
+    def generate_code(self, prompt: str) -> str:
+        """
+        Genera código usando Ollama.
+        
+        Args:
+            prompt (str): Descripción de código a generar
+            
+        Returns:
+            str: Código generado
+        """
+        try:
+            response = self._make_request("/api/generate", {
+                "model": self.model,
+                "prompt": f"Generate Python code for: {prompt}",
+                "stream": False
+            })
+            return response.get("response", "")
+        except Exception as e:
+            self.logger.error(f"Error generando código con Ollama: {str(e)}")
+            raise
+
+    def analyze_code(self, code: str) -> Dict[str, Any]:
+        """
+        Analiza código usando Ollama para detectar problemas.
+        
+        Args:
+            code (str): Código a analizar
+            
+        Returns:
+            Dict[str, Any]: Resultado del análisis
+        """
+        try:
+            response = self._make_request("/api/analyze", {
+                "model": self.model,
+                "code": code,
+                "stream": False
+            })
+            return response
+        except Exception as e:
+            self.logger.error(f"Error analizando código con Ollama: {str(e)}")
+            raise
+
+    def suggest_fixes(self, error_message: str, code: str) -> str:
+        """
+        Sugiere correcciones para errores en el código.
+        
+        Args:
+            error_message (str): Mensaje de error
+            code (str): Código con error
+            
+        Returns:
+            str: Sugerencia de corrección
+        """
+        try:
+            prompt = f"Fix this Python code error:\nError: {error_message}\nCode:\n{code}"
+            response = self._make_request("/api/generate", {
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False
+            })
+            return response.get("response", "")
+        except Exception as e:
+            self.logger.error(f"Error obteniendo sugerencias: {str(e)}")
+            raise
+
+    def _make_request(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Realiza una petición a la API de Ollama.
+        
+        Args:
+            endpoint (str): Endpoint de la API
+            data (Dict[str, Any]): Datos de la petición
+            
+        Returns:
+            Dict[str, Any]: Respuesta de la API
+        """
+        try:
+            response = requests.post(f"{self.host}{endpoint}", json=data)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Error en petición a Ollama: {str(e)}")
+            raise
+EOF
+
+# 4. Crear src/logger_config.py
+cat > src/logger_config.py << 'EOF'
+import logging
+import sys
+from typing import Optional
+from pathlib import Path
+
+def setup_logger(
+    name: str,
+    log_file: Optional[str] = None,
+    level: int = logging.INFO
+) -> logging.Logger:
+    """
+    Configura un logger con formato específico.
+    
+    Args:
+        name (str): Nombre del logger
+        log_file (Optional[str]): Ruta al archivo de log
+        level (int): Nivel de logging
+        
+    Returns:
+        logging.Logger: Logger configurado
+    """
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+
+    # Formato detallado para los logs
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    # Handler para consola
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # Handler para archivo si se especifica
+    if log_file:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+    return logger
+EOF
+
+# 5. Crear src/dependency_manager.py
+cat > src/dependency_manager.py << 'EOF'
+import os
+import subprocess
+import logging
+import sys
+import platform
+from typing import Optional, List, Dict
+import pkg_resources
+
+class DependencyManager:
+    """
+    Gestor de dependencias para paquetes Python y sistema.
+    """
+
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        self.logger = logger or logging.getLogger(__name__)
+        self.required_dependencies = {
+            'python': True,
+            'pip': True,
+            'ollama': True
+        }
+        self.auto_install_dependencies = ['ollama']
+
+    def install_package(self, package_name: str, version: Optional[str] = None) -> bool:
+        """
+        Instala un paquete Python usando pip.
+        """
+        try:
+            spec = f"{package_name}=={version}" if version else package_name
+            subprocess.check_call([sys.executable, "-m", "pip", "install", spec])
+            self.logger.info(f"Instalado {spec} exitosamente")
+            return True
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Error instalando {package_name}: {str(e)}")
+            return False
+
+    def install_system_dependency(self, dependency: str) -> bool:
+        """
+        Instala una dependencia del sistema.
+        """
+        try:
+            if dependency == 'ollama':
+                subprocess.check_call("curl -sSL https://ollama.ai/install.sh | sh", shell=True)
+                try:
+                    subprocess.check_call("systemctl start ollama", shell=True)
+                except subprocess.CalledProcessError:
+                    self.logger.warning("No se pudo iniciar ollama con systemctl")
+                return True
+            return False
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Error instalando {dependency}: {str(e)}")
+            return False
+
+    def auto_install_missing_dependencies(self) -> None:
+        """
+        Instala automáticamente las dependencias faltantes.
+        """
+        deps_status = self.check_system_dependencies()
+        for dep in self.auto_install_dependencies:
+            if not deps_status.get(dep, False):
+                self.logger.info(f"Instalando automáticamente {dep}...")
+                self.install_system_dependency(dep)
+
+    def get_installed_packages(self) -> List[str]:
+        """
+        Obtiene lista de paquetes instalados.
+        """
+        return [f"{dist.key}=={dist.version}"
+                for dist in pkg_resources.working_set]
+
+    def check_system_dependencies(self) -> Dict[str, bool]:
+        """
+        Verifica dependencias del sistema.
+        """
+        dependencies = {
+            'python': self._check_python_version(),
+            'pip': self._check_pip(),
+            'ollama': self._check_ollama()
+        }
+        return {
+            dep: status
+            for dep, status in dependencies.items()
+            if self.required_dependencies.get(dep, True)
+        }
+
+    def _check_python_version(self) -> bool:
+        """
+        Verifica la versión de Python.
+        """
+        version = sys.version_info
+        return version.major == 3 and version.minor >= 10
+
+    def _check_pip(self) -> bool:
+        """
+        Verifica la instalación de pip.
+        """
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "--version"])
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
+    def _check_ollama(self) -> bool:
+        """
+        Verifica la instalación de Ollama.
+        """
+        try:
+            subprocess.check_call(["ollama", "--version"])
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+EOF
+
+# 6. Crear config.py
+cat > config.py << 'EOF'
+"""
+Configuración global para AIPATT
+"""
+
+# Configuración de logging
+LOG_CONFIG = {
+    'DEFAULT_LEVEL': 'INFO',
+    'LOG_FILE': 'logs/aipatt.log',
+    'MAX_BYTES': 1024 * 1024,  # 1MB
+    'BACKUP_COUNT': 5
+}
+
+# Configuración de Ollama
+OLLAMA_CONFIG = {
+    'HOST': 'http://localhost:11434',
+    'MODEL': 'codellama',
+    'TIMEOUT': 30
+}
+
+# Configuración del generador de código
+CODE_GENERATOR_CONFIG = {
+    'INDENT_SIZE': 4,
+    'MAX_LINE_LENGTH': 88,  # Black default
+    'DOCSTRING_STYLE': 'google'
+}
+
+# Configuración del manejador de errores
+ERROR_HANDLER_CONFIG = {
+    'MAX_RETRIES': 3,
+    'RETRY_DELAY': 1  # segundos
+}
+
+# Dependencias requeridas
+REQUIRED_PACKAGES = [
+    'black',
+    'pytest',
+    'requests'
+]
+
+# Versiones mínimas requeridas
+MIN_VERSIONS = {
+    'python': '3.10.0',
+    'pip': '20.0.0',
+    'ollama': '1.0.0'
+}
+EOF
+
+# 7. Crear main.py
+cat > main.py << 'EOF'
+import logging
+from src.logger_config import setup_logger
+from src.code_generator import CodeGenerator
+from src.error_handler import ErrorHandler
+from src.dependency_manager import DependencyManager
+from src.ollama_integration import OllamaIntegration
+
+def main():
+    # Configuración del logger
+    logger = setup_logger("aipatt", "logs/aipatt.log")
+    logger.info("Iniciando AIPATT")
+
+    try:
+        # Inicialización de componentes
+        dep_manager = DependencyManager(logger)
+        code_gen = CodeGenerator(logger)
+        error_handler = ErrorHandler(logger)
+
+        # Verificación de dependencias requeridas
+        deps_status = dep_manager.check_system_dependencies()
+        missing_required_deps = [
+            dep for dep, status in deps_status.items() 
+            if not status and dep_manager.required_dependencies.get(dep, True)
+        ]
+
+        if missing_required_deps:
+            logger.error("Faltan dependencias requeridas del sistema")
+            logger.error(f"Dependencias faltantes: {', '.join(missing_required_deps)}")
+            return
+
+        # Inicialización de Ollama
+        try:
+            ollama = OllamaIntegration(logger=logger)
+            logger.info("Ollama inicializado correctamente")
+        except Exception as e:
+            logger.error(f"Error iniciando Ollama: {str(e)}")
+            ollama = None
+
+        # Ejemplo de uso
+        template = """
+def {function_name}({params}):
+    \"""
+    {docstring}
+    \"""
+    {body}
+"""
+        params = {
+            "function_name": "ejemplo",
+            "params": "x, y",
+            "docstring": "Función de ejemplo",
+            "body": "return x + y"
+        }
+
+        try:
+            # Generación de código
+            generated_code = code_gen.generate_code(template, params)
+            logger.info("Código generado exitosamente")
+
+            # Análisis con Ollama si está disponible
+            if ollama:
+                analysis = ollama.analyze_code(generated_code)
+                logger.info(f"Análisis de código: {analysis}")
+            else:
+                logger.info("Análisis de código omitido - Ollama no disponible")
+
+        except Exception as e:
+            # Manejo de errores
+            solution = error_handler.handle_error(e)
+            if solution:
+                logger.info(f"Error resuelto: {solution}")
+            else:
+                logger.error(f"Error no resuelto: {str(e)}")
+
+    except Exception as e:
+        logger.error(f"Error crítico: {str(e)}")
+        raise
+
+if __name__ == "__main__":
+    main()
+EOF
+
+# 8. Crear tests/test_code_generator.py
+cat > tests/test_code_generator.py << 'EOF'
+import pytest
+from src.code_generator import CodeGenerator
+
+def test_code_generation():
+    generator = CodeGenerator()
+    template = "def {name}():\n    return {value}"
+    params = {"name": "test_func", "value": "'Hello'"}
+    
+    result = generator.generate_code(template, params)
+    assert "def test_func():" in result
+    assert "return 'Hello'" in result
+
+def test_code_validation():
+    generator = CodeGenerator()
+    valid_code = "def test():\n    pass"
+    assert generator.validate_code(valid_code) == True
+
+def test_invalid_code():
+    generator = CodeGenerator()
+    invalid_code = "def test() return None"
+    with pytest.raises(SyntaxError):
+        generator.validate_code(invalid_code)
+
+def test_code_formatting():
+    generator = CodeGenerator()
+    unformatted = "def test(  ):\n  return   True"
+    formatted = generator.format_code(unformatted)
+    assert "def test():" in formatted
+EOF
+
+# 9. Crear tests/test_error_handler.py
+cat > tests/test_error_handler.py << 'EOF'
+import pytest
+from src.error_handler import ErrorHandler
+
+def test_error_handling():
+    handler = ErrorHandler()
+    error = ModuleNotFoundError("No module named 'nonexistent'")
+    result = handler.handle_error(error)
+    assert result is not None
+
+def test_syntax_error_handling():
+    handler = ErrorHandler()
+    error = SyntaxError("invalid syntax", ("test.py", 1, 1, "def test()"))
+    result = handler.handle_error(error)
+    assert isinstance(result, str)
+    assert "Error de sintaxis" in result
+
+def test_custom_error_solution():
+    handler = ErrorHandler()
+    
+    def custom_solution(error):
+        return "Solución personalizada"
+    
+    handler.register_solution("ValueError", custom_solution)
+    error = ValueError("Test error")
+    result = handler.handle_error(error)
+    assert result == "Solución personalizada"
+
+def test_unknown_error_handling():
+    handler = ErrorHandler()
+    error = KeyError("test")
+    result = handler.handle_error(error)
+    assert result is None
+EOF
+
+# Finalmente, 
