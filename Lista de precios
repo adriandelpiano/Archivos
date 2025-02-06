@@ -1,0 +1,215 @@
+import { useEffect, useState } from 'react';
+import * as UAParser from 'ua-parser-js';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Smartphone, Cpu, Globe, Battery, Monitor, Plug } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+interface DeviceInfo {
+  browser: UAParser.IBrowser;
+  device: UAParser.IDevice;
+  os: UAParser.IOS;
+  cpu: UAParser.ICPU;
+  engine: UAParser.IEngine;
+}
+
+interface RepairComponent {
+  name: string;
+  description: string;
+  originalPrice: number;
+  estimatedPrice: number;
+  condition: string;
+}
+
+interface DeviceModel {
+  name: string;
+  components: RepairComponent[];
+}
+
+const DEVICE_MODELS: DeviceModel[] = [
+  {
+    name: "Motorola G60s",
+    components: [
+      {
+        name: 'Pantalla',
+        description: 'Display Original Motorola G60s',
+        originalPrice: 120.00,
+        estimatedPrice: 60.00,
+        condition: 'Nueva'
+      },
+      {
+        name: 'Batería',
+        description: 'Batería Original Motorola G60s',
+        originalPrice: 30.00,
+        estimatedPrice: 15.00,
+        condition: 'Nueva'
+      },
+      {
+        name: 'Puerto de Carga',
+        description: 'Placa de carga Motorola G60s',
+        originalPrice: 20.00,
+        estimatedPrice: 10.00,
+        condition: 'Nueva'
+      }
+    ]
+  },
+  {
+    name: "Samsung A12",
+    components: [
+      {
+        name: 'Pantalla',
+        description: 'Display Original Samsung A12',
+        originalPrice: 100.00,
+        estimatedPrice: 50.00,
+        condition: 'Nueva'
+      },
+      {
+        name: 'Batería',
+        description: 'Batería Original Samsung A12',
+        originalPrice: 25.00,
+        estimatedPrice: 12.50,
+        condition: 'Nueva'
+      },
+      {
+        name: 'Puerto de Carga',
+        description: 'Placa de carga Samsung A12',
+        originalPrice: 18.00,
+        estimatedPrice: 9.00,
+        condition: 'Nueva'
+      }
+    ]
+  },
+  {
+    name: "Samsung A32 4G",
+    components: [
+      {
+        name: 'Pantalla',
+        description: 'Display Original Samsung A32 4G',
+        originalPrice: 150.00,
+        estimatedPrice: 75.00,
+        condition: 'Nueva'
+      },
+      {
+        name: 'Batería',
+        description: 'Batería Original Samsung A32 4G',
+        originalPrice: 35.00,
+        estimatedPrice: 17.50,
+        condition: 'Nueva'
+      },
+      {
+        name: 'Puerto de Carga',
+        description: 'Placa de carga Samsung A32 4G',
+        originalPrice: 22.00,
+        estimatedPrice: 11.00,
+        condition: 'Nueva'
+      }
+    ]
+  },
+  {
+    name: "iPhone 11",
+    components: [
+      {
+        name: 'Pantalla',
+        description: 'Display Original iPhone 11',
+        originalPrice: 200.00,
+        estimatedPrice: 100.00,
+        condition: 'Nueva'
+      },
+      {
+        name: 'Batería',
+        description: 'Batería Original iPhone 11',
+        originalPrice: 45.00,
+        estimatedPrice: 22.50,
+        condition: 'Nueva'
+      },
+      {
+        name: 'Puerto de Carga',
+        description: 'Placa de carga iPhone 11',
+        originalPrice: 30.00,
+        estimatedPrice: 15.00,
+        condition: 'Nueva'
+      }
+    ]
+  }
+];
+
+export default function Home() {
+  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>(DEVICE_MODELS[0].name);
+
+  useEffect(() => {
+    const parser = new UAParser.UAParser();
+    const result = parser.getResult();
+    setDeviceInfo({
+      browser: result.browser,
+      device: result.device,
+      os: result.os,
+      cpu: result.cpu,
+      engine: result.engine
+    });
+  }, []);
+
+  if (!deviceInfo) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  const selectedDevice = DEVICE_MODELS.find(model => model.name === selectedModel) || DEVICE_MODELS[0];
+
+  return (
+    <div className="container mx-auto p-4 min-h-screen">
+      <h1 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+        Diagnóstico de Dispositivo
+      </h1>
+
+      <div className="mb-8">
+        <Select value={selectedModel} onValueChange={setSelectedModel}>
+          <SelectTrigger className="w-full md:w-[300px]">
+            <SelectValue placeholder="Selecciona un modelo" />
+          </SelectTrigger>
+          <SelectContent>
+            {DEVICE_MODELS.map((model) => (
+              <SelectItem key={model.name} value={model.name}>
+                {model.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <h2 className="text-2xl font-bold mb-4">Componentes y Precios para {selectedModel}</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {selectedDevice.components.map((component) => (
+          <Card key={component.name}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {component.name === 'Pantalla' && <Monitor className="h-6 w-6" />}
+                {component.name === 'Batería' && <Battery className="h-6 w-6" />}
+                {component.name === 'Puerto de Carga' && <Plug className="h-6 w-6" />}
+                {component.name}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="space-y-2">
+                <dt className="font-semibold">Descripción</dt>
+                <dd>{component.description}</dd>
+                <dt className="font-semibold">Precio Original</dt>
+                <dd className="text-lg text-muted-foreground line-through">
+                  ${component.originalPrice.toFixed(2)}
+                </dd>
+                <dt className="font-semibold">Precio con 50% descuento</dt>
+                <dd className="text-lg font-medium text-primary">
+                  ${component.estimatedPrice.toFixed(2)}
+                </dd>
+                <dt className="font-semibold">Condición</dt>
+                <dd>{component.condition}</dd>
+              </dl>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
